@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/cmolloy36/Pokedex/internal/PokeAPIInteractions"
+	"github.com/cmolloy36/Pokedex/internal/pokecache"
 )
 
 func main() {
@@ -14,12 +17,16 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 
 	initialNext := "https://pokeapi.co/api/v2/location-area/?offset=0&limit=20"
-	initialPrevious := ""
+	var initialPrevious *string = nil
 
 	ptr := &config{
 		Next:     &initialNext,
-		Previous: &initialPrevious,
+		Previous: initialPrevious,
 	}
+
+	// interval, _ := time.ParseDuration("1m30s") // make configurable?
+	cache := pokecache.NewCache(60 * time.Second)
+
 	for {
 		fmt.Print("Pokedex > ")
 		if scanner.Scan() {
@@ -32,7 +39,13 @@ func main() {
 					fmt.Println("Please input a valid command.")
 					continue
 				}
-				err := commandsMap[newText[0]].callback(ptr)
+
+				// param := ""
+				if len(newText) > 1 {
+					// param = newText[1]
+				}
+
+				err := commandsMap[newText[0]].callback(ptr, cache)
 				if err != nil {
 					fmt.Println(fmt.Errorf("error: %w", err))
 				}
@@ -45,7 +58,7 @@ func main() {
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(*config) error
+	callback    func(*config, *pokecache.Cache) error
 }
 
 type config struct {
@@ -61,6 +74,11 @@ func init() {
 			name:        "exit",
 			description: "Exit the Pokedex",
 			callback:    commandExit,
+		},
+		"explore": {
+			name:        "explore",
+			description: "See which pokemon are in the location",
+			callback:    commandExplore,
 		},
 		"help": {
 			name:        "help",
@@ -86,13 +104,7 @@ func cleanInput(text string) []string {
 	return substrings
 }
 
-func commandExit(ptr *config) error { // does this need to return an error? When would exiting not work?
-	fmt.Print("Closing the Pokedex... Goodbye!\n")
-	os.Exit(0)
-	return nil
-}
-
-func commandHelp(ptr *config) error { // does this need to return an error? When would exiting not work?
+func commandHelp(ptr *config, cache *pokecache.Cache) error {
 	usageStr := ""
 	for key, val := range commandsMap { // sort this!! currently returns in various orders
 		currStr := fmt.Sprintf("%s: %s\n", key, val.description)
@@ -102,34 +114,100 @@ func commandHelp(ptr *config) error { // does this need to return an error? When
 	return nil
 }
 
-func commandMap(ptr *config) error {
-	locations, err := PokeAPIInteractions.GetLocations(ptr.Next)
+func commandExit(ptr *config, cache *pokecache.Cache) error {
+	fmt.Print("Closing the Pokedex... Goodbye!\n")
+	os.Exit(0)
+	return nil
+}
+
+func commandExplore(ptr *config, cache *pokecache.Cache) error {
+	// err := PokeAPIInteractions.GetLocationPokemon(ptr.Next, cache, param)
+	// if err != nil {
+	// 	return err
+	// }
+
+	cachedData, ok := cache.Get(*ptr.Next)
+	if !ok {
+		return fmt.Errorf("could not get entry from explore")
+	}
+
+	var entry pokecache.BatchInfo
+	err := json.Unmarshal(cachedData, &entry)
 	if err != nil {
 		return err
 	}
 
-	ptr.Next = locations.Next
-	ptr.Previous = locations.Previous
+	ptr.Next = entry.Next
+	ptr.Previous = entry.Previous
 
-	for i := 0; i < len(locations.Results); i++ {
-		fmt.Println(locations.Results[i].Name)
+	for i := 0; i < len(entry.Results); i++ {
+		fmt.Println(entry.Results[i].Name)
 	}
+	// fmt.Printf("%d", len(cache.Cache))
+
+	return nil
+
+}
+
+func commandMap(ptr *config, cache *pokecache.Cache) error {
+	err := PokeAPIInteractions.GetLocations(ptr.Next, cache)
+	if err != nil {
+		return err
+	}
+
+	// cache.Mu.Lock()
+
+	// defer cache.Mu.Unlock()
+
+	// fmt.Println("getlocations finished")
+
+	cachedData, ok := cache.Get(*ptr.Next)
+	if !ok {
+		return fmt.Errorf("could not get entry from map")
+	}
+
+	var entry pokecache.BatchInfo
+	err = json.Unmarshal(cachedData, &entry)
+	if err != nil {
+		return err
+	}
+
+	ptr.Next = entry.Next
+	ptr.Previous = entry.Previous
+
+	for i := 0; i < len(entry.Results); i++ {
+		fmt.Println(entry.Results[i].Name)
+	}
+	// fmt.Printf("cache length: %d\n", len(cache.Cache))
 
 	return nil
 }
 
-func commandMapb(ptr *config) error {
-	locations, err := PokeAPIInteractions.GetLocations(ptr.Previous)
+func commandMapb(ptr *config, cache *pokecache.Cache) error {
+	err := PokeAPIInteractions.GetLocations(ptr.Previous, cache)
 	if err != nil {
 		return err
 	}
 
-	ptr.Next = locations.Next
-	ptr.Previous = locations.Previous
-
-	for i := 0; i < len(locations.Results); i++ {
-		fmt.Println(locations.Results[i].Name)
+	cachedData, ok := cache.Get(*ptr.Previous)
+	if !ok {
+		return fmt.Errorf("could not get entry from mapb")
 	}
+
+	var entry pokecache.BatchInfo
+	err = json.Unmarshal(cachedData, &entry)
+	if err != nil {
+		return err
+	}
+
+	ptr.Next = entry.Next
+	ptr.Previous = entry.Previous
+
+	for i := 0; i < len(entry.Results); i++ {
+		fmt.Println(entry.Results[i].Name)
+	}
+
+	// fmt.Printf("cache length: %d\n", len(cache.Cache))
 
 	return nil
 }

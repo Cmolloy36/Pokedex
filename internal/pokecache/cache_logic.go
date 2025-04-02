@@ -39,28 +39,34 @@ func NewCache(interval time.Duration) *Cache {
 	return newCache
 }
 
-func (c Cache) Add(key string, val []byte) {
+func (c *Cache) Add(key string, val []byte) {
 	newCacheEntry := cacheEntry{
 		createdAt: time.Now(),
 		val:       val,
 	}
+
 	c.mu.Lock()
 	c.Cache[key] = newCacheEntry
+
+	// fmt.Println(c.Cache[key])
 	c.mu.Unlock()
 }
 
-func (c Cache) Get(key string) ([]byte, bool) {
+func (c *Cache) Get(key string) ([]byte, bool) {
+	// fmt.Printf("cache key: %s\n", key)
 	c.mu.Lock()
 	cacheEntry, ok := c.Cache[key]
+	// fmt.Println(cacheEntry)
 	c.mu.Unlock()
 	if !ok {
 		return []byte{}, false
 	}
+	// fmt.Println("cache get successful")
 
 	return cacheEntry.val, true
 }
 
-func (c Cache) reapLoop() {
+func (c *Cache) reapLoop() {
 	ticker := time.NewTicker(c.interval)
 	defer ticker.Stop()
 
