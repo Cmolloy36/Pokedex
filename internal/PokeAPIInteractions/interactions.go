@@ -53,3 +53,61 @@ func GetLocations(url *string, c *pokecache.Cache) error {
 
 	return nil
 }
+
+func GetLocationPokemon(url *string, c *pokecache.Cache) error {
+	_, exist := c.Get(*url)
+
+	if !exist {
+		res, err := http.Get(*url)
+		if err != nil {
+			return err
+		}
+
+		defer res.Body.Close()
+
+		var locationPokemon pokecache.LocationPokemonInfo
+
+		decoder := json.NewDecoder(res.Body)
+		if err := decoder.Decode(&locationPokemon); err != nil {
+			return err
+		}
+
+		jsonBytes, err := json.Marshal(locationPokemon)
+		if err != nil {
+			return err
+		}
+
+		c.Add(*url, jsonBytes)
+	}
+
+	return nil
+}
+
+func GetPokemonInfo(url *string, c *pokecache.Cache) error {
+	_, exist := c.Get(*url)
+
+	if !exist {
+		res, err := http.Get(*url)
+		if err != nil {
+			return err
+		}
+
+		defer res.Body.Close()
+
+		var pokemonInfo pokecache.PokemonInfo
+
+		decoder := json.NewDecoder(res.Body)
+		if err := decoder.Decode(&pokemonInfo); err != nil {
+			return err
+		}
+
+		jsonBytes, err := json.Marshal(pokemonInfo)
+		if err != nil {
+			return err
+		}
+
+		c.Add(*url, jsonBytes)
+	}
+
+	return nil
+}

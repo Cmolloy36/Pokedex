@@ -25,7 +25,7 @@ func main() {
 	}
 
 	// interval, _ := time.ParseDuration("1m30s") // make configurable?
-	cache := pokecache.NewCache(60 * time.Second)
+	cache := pokecache.NewCache(5 * time.Second)
 
 	for {
 		fmt.Print("Pokedex > ")
@@ -40,12 +40,12 @@ func main() {
 					continue
 				}
 
-				// param := ""
+				param := ""
 				if len(newText) > 1 {
-					// param = newText[1]
+					param = newText[1]
 				}
 
-				err := commandsMap[newText[0]].callback(ptr, cache)
+				err := commandsMap[newText[0]].callback(ptr, cache, param)
 				if err != nil {
 					fmt.Println(fmt.Errorf("error: %w", err))
 				}
@@ -58,7 +58,7 @@ func main() {
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(*config, *pokecache.Cache) error
+	callback    func(*config, *pokecache.Cache, string) error
 }
 
 type config struct {
@@ -70,6 +70,11 @@ var commandsMap map[string]cliCommand
 
 func init() {
 	commandsMap = map[string]cliCommand{
+		"catch": {
+			name:        "catch",
+			description: "Attempt to catch a pokemon",
+			callback:    commandCatch,
+		},
 		"exit": {
 			name:        "exit",
 			description: "Exit the Pokedex",
@@ -104,7 +109,40 @@ func cleanInput(text string) []string {
 	return substrings
 }
 
-func commandHelp(ptr *config, cache *pokecache.Cache) error {
+func commandCatch(ptr *config, cache *pokecache.Cache, param string) error {
+	url := fmt.Sprintf("https://pokeapi.co/api/v2/pokemon/%s", param)
+	err := PokeAPIInteractions.GetPokemonInfo(&url, cache)
+	if err != nil {
+		return err
+	}
+
+	cachedData, ok := cache.Get(url)
+	if !ok {
+		return fmt.Errorf("could not get entry from catch")
+	}
+
+	var entry pokecache.LocationPokemonInfo
+	err = json.Unmarshal(cachedData, &entry)
+	if err != nil {
+		return err
+	}
+
+	for _, pkmn := range entry.PokemonEncounters {
+		fmt.Println(pkmn.Pokemon.Name)
+	}
+	// fmt.Printf("%d", len(cache.Cache))
+
+	return nil
+
+}
+
+func commandExit(ptr *config, cache *pokecache.Cache, param string) error {
+	fmt.Print("Closing the Pokedex... Goodbye!\n")
+	os.Exit(0)
+	return nil
+}
+
+func commandHelp(ptr *config, cache *pokecache.Cache, param string) error {
 	usageStr := ""
 	for key, val := range commandsMap { // sort this!! currently returns in various orders
 		currStr := fmt.Sprintf("%s: %s\n", key, val.description)
@@ -114,34 +152,26 @@ func commandHelp(ptr *config, cache *pokecache.Cache) error {
 	return nil
 }
 
-func commandExit(ptr *config, cache *pokecache.Cache) error {
-	fmt.Print("Closing the Pokedex... Goodbye!\n")
-	os.Exit(0)
-	return nil
-}
-
-func commandExplore(ptr *config, cache *pokecache.Cache) error {
-	// err := PokeAPIInteractions.GetLocationPokemon(ptr.Next, cache, param)
-	// if err != nil {
-	// 	return err
-	// }
-
-	cachedData, ok := cache.Get(*ptr.Next)
-	if !ok {
-		return fmt.Errorf("could not get entry from explore")
-	}
-
-	var entry pokecache.BatchInfo
-	err := json.Unmarshal(cachedData, &entry)
+func commandExplore(ptr *config, cache *pokecache.Cache, param string) error {
+	url := fmt.Sprintf("https://pokeapi.co/api/v2/location-area/%s", param)
+	err := PokeAPIInteractions.GetLocationPokemon(&url, cache)
 	if err != nil {
 		return err
 	}
 
-	ptr.Next = entry.Next
-	ptr.Previous = entry.Previous
+	cachedData, ok := cache.Get(url)
+	if !ok {
+		return fmt.Errorf("could not get entry from explore")
+	}
 
-	for i := 0; i < len(entry.Results); i++ {
-		fmt.Println(entry.Results[i].Name)
+	var entry pokecache.LocationPokemonInfo
+	err = json.Unmarshal(cachedData, &entry)
+	if err != nil {
+		return err
+	}
+
+	for _, pkmn := range entry.PokemonEncounters {
+		fmt.Println(pkmn.Pokemon.Name)
 	}
 	// fmt.Printf("%d", len(cache.Cache))
 
@@ -149,7 +179,7 @@ func commandExplore(ptr *config, cache *pokecache.Cache) error {
 
 }
 
-func commandMap(ptr *config, cache *pokecache.Cache) error {
+func commandMap(ptr *config, cache *pokecache.Cache, param string) error {
 	err := PokeAPIInteractions.GetLocations(ptr.Next, cache)
 	if err != nil {
 		return err
@@ -183,7 +213,7 @@ func commandMap(ptr *config, cache *pokecache.Cache) error {
 	return nil
 }
 
-func commandMapb(ptr *config, cache *pokecache.Cache) error {
+func commandMapb(ptr *config, cache *pokecache.Cache, param string) error {
 	err := PokeAPIInteractions.GetLocations(ptr.Previous, cache)
 	if err != nil {
 		return err
